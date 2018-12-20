@@ -55,7 +55,7 @@ extern int (*gUnhandledExceptionHandler)(EXCEPTION_POINTERS*);
 #endif
 
 #define W32_SEH_HANDLE_EX(_ex) \
-	if (_ex##_handler) _ex##_handler(0, ep, ctx)
+	if (_ex##_handler) _ex##_handler(0, ep, ctx, &handled)
 
 LONG CALLBACK seh_unhandled_exception_filter(EXCEPTION_POINTERS* ep)
 {
@@ -197,13 +197,13 @@ LONG CALLBACK seh_vectored_exception_handler(EXCEPTION_POINTERS* ep)
 	EXCEPTION_RECORD* er;
 	CONTEXT* ctx;
 	LONG res;
+	gboolean handled = TRUE;
 	MonoJitTlsData *jit_tls = mono_tls_get_jit_tls ();
 
 	/* If the thread is not managed by the runtime return early */
 	if (!jit_tls)
 		return EXCEPTION_CONTINUE_SEARCH;
 
-	jit_tls->mono_win_chained_exception_needs_run = FALSE;
 	res = EXCEPTION_CONTINUE_EXECUTION;
 
 	er = ep->ExceptionRecord;
@@ -228,11 +228,11 @@ LONG CALLBACK seh_vectored_exception_handler(EXCEPTION_POINTERS* ep)
 		W32_SEH_HANDLE_EX(fpe);
 		break;
 	default:
-		jit_tls->mono_win_chained_exception_needs_run = TRUE;
+		handled = FALSE;
 		break;
 	}
 
-	if (jit_tls->mono_win_chained_exception_needs_run) {
+	if (!handled) {
 		/* Don't copy context back if we chained exception
 		* as the handler may have modfied the EXCEPTION_POINTERS
 		* directly. We don't pass sigcontext to chained handlers.
